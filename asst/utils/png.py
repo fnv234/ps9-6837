@@ -1878,7 +1878,7 @@ class Reader:
             while True:
                 try:
                     type, data = self.chunk(lenient=lenient)
-                except ValueError, e:
+                except ValueError as e:
                     raise ChunkError(e.args[0])
                 if type == 'IEND':
                     # http://www.w3.org/TR/PNG/#11IEND
@@ -2441,7 +2441,7 @@ def topngbytes(name, rows, x, y, **k):
 
     import os
 
-    print name
+    print(name)
     f = BytesIO()
     w = Writer(x, y, **k)
     w.write(f, rows)
@@ -2605,7 +2605,7 @@ class Test(unittest.TestCase):
             candi = candidate.replace('n', 'i')
             if candi not in _pngsuite:
                 continue
-            print 'adam7 read', candidate
+            print('adam7 read', candidate)
             straight = Reader(bytes=_pngsuite[candidate])
             adam7 = Reader(bytes=_pngsuite[candi])
             # Just compare the pixels.  Ignore x,y (because they're
@@ -3850,5 +3850,5 @@ def _main(argv):
 if __name__ == '__main__':
     try:
         _main(sys.argv)
-    except Error, e:
+    except Error as e:
         print >>sys.stderr, e
