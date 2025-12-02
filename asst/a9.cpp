@@ -240,34 +240,43 @@ Image naiveComposite(const Image& bg, const Image& fg, const Image& mask, int y,
 }
 
 Image Poisson(const Image& bg, const Image& fg, const Image& mask, int niter) {
+    // Initialize x with background everywhere
     Image x = bg.copy();
     
-    // b = Laplacian of source
+    // b = Laplacian of source - the guidance field
     Image b = applyLaplacian(fg);
     
     for (int iter = 0; iter < niter; ++iter) {
-        // r = b - Ax (masked)
+        // Compute Ax = Laplacian(x)
         Image Ax = applyLaplacian(x);
+        
+        // Residual: r = (b - Ax), masked to only inside region
         Image r = subtractImages(b, Ax);
         r = multiplyImages(r, mask);
         
-        // alpha = (r · r) / (r · Ar)
+        // Compute Ar = Laplacian(r) for step size
         Image Ar = applyLaplacian(r);
+        
+        // alpha = (r · r) / (r · Ar)
         double r_dot_r = dotIm(r, r);
         double r_dot_Ar = dotIm(r, Ar);
+        if (r_dot_Ar == 0 || r_dot_r < 1e-10) {
+            break;
+        }
         double alpha = r_dot_r / r_dot_Ar;
         
-        // Update x only in masked region
+        // Update x: x = x + alpha * r
+        // Since r is already masked, this only updates inside mask
         Image update = scaleImage(r, alpha);
         x = addImages(x, update);
         
-        // Restore background values outside mask
+        // Enforce boundary: outside mask must equal bg
+        // This is CRITICAL - pixels outside mask never change
         for (int y = 0; y < x.height; ++y) {
             for (int xi = 0; xi < x.width; ++xi) {
-                if (mask(y, xi, 0) < 0.5) {
-                    for (int c = 0; c < x.channels; ++c) {
-                        x(y, xi, c) = bg(y, xi, c);
-                    }
+                double m = mask(y, xi, 0);
+                for (int c = 0; c < x.channels; ++c) {
+                    x(y, xi, c) = m * x(y, xi, c) + (1.0 - m) * bg(y, xi, c);
                 }
             }
         }
@@ -281,28 +290,45 @@ Image Poisson(const Image& bg, const Image& fg, const Image& mask, int niter) {
 }
 
 Image PoissonCG(const Image& bg, const Image& fg, const Image& mask, int niter) {
+    // Initialize x with background everywhere
     Image x = bg.copy();
     
-    // b = Laplacian of source
+    // b = Laplacian of source - the guidance field
     Image b = applyLaplacian(fg);
     
-    // r0 = d0 = b - Ax0 (masked)
+    // Initial residual: r = (b - Ax), masked
     Image Ax = applyLaplacian(x);
     Image r = subtractImages(b, Ax);
     r = multiplyImages(r, mask);
+    
     Image d = r.copy();
     
     for (int iter = 0; iter < niter; ++iter) {
-        // alpha = (r · r) / (d · Ad)
+        // Compute Ad = Laplacian(d)
         Image Ad = applyLaplacian(d);
+        
+        // alpha = (r · r) / (d · Ad)
         double r_dot_r = dotIm(r, r);
         double d_dot_Ad = dotIm(d, Ad);
+        if (d_dot_Ad == 0 || r_dot_r < 1e-10) {
+            break;
+        }
         double alpha = r_dot_r / d_dot_Ad;
         
         // x = x + alpha * d
         x = addImages(x, scaleImage(d, alpha));
         
-        // r_new = r - alpha * Ad (masked)
+        // Enforce boundary: outside mask equals bg
+        for (int y = 0; y < x.height; ++y) {
+            for (int xi = 0; xi < x.width; ++xi) {
+                double m = mask(y, xi, 0);
+                for (int c = 0; c < x.channels; ++c) {
+                    x(y, xi, c) = m * x(y, xi, c) + (1.0 - m) * bg(y, xi, c);
+                }
+            }
+        }
+        
+        // r_new = r - alpha * Ad, then mask
         Image old_r = r.copy();
         r = subtractImages(r, scaleImage(Ad, alpha));
         r = multiplyImages(r, mask);
@@ -310,20 +336,8 @@ Image PoissonCG(const Image& bg, const Image& fg, const Image& mask, int niter) 
         // beta = (r_new · r_new) / (r_old · r_old)
         double beta = computeConjugateDirectionStepSize(old_r, r);
         
-        // d = r + beta * d (masked)
+        // d = r + beta * d
         d = addImages(r, scaleImage(d, beta));
-        d = multiplyImages(d, mask);
-        
-        // Restore background values outside mask
-        for (int y = 0; y < x.height; ++y) {
-            for (int xi = 0; xi < x.width; ++xi) {
-                if (mask(y, xi, 0) < 0.5) {
-                    for (int c = 0; c < x.channels; ++c) {
-                        x(y, xi, c) = bg(y, xi, c);
-                    }
-                }
-            }
-        }
         
         if ((iter + 1) % 50 == 0) {
             std::cout << "Poisson CG Iteration " << (iter + 1) << "/" << niter << std::endl;
@@ -404,8 +418,9 @@ Image multiplyImages(const Image& im1, const Image& im2) {
     Image result(im1.height, im1.width, im1.channels);
     for (int y = 0; y < im1.height; ++y) {
         for (int x = 0; x < im1.width; ++x) {
+            double m = im2(y, x, 0);  // mask value (same for all channels)
             for (int c = 0; c < im1.channels; ++c) {
-                result(y, x, c) = im1(y, x, c) * im2(y, x, 0);
+                result(y, x, c) = im1(y, x, c) * m;
             }
         }
     }
