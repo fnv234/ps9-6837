@@ -192,6 +192,25 @@ void test_conjugate_grad_descent_reg() {
     std::cout << "Regularized test complete!" << std::endl;
 }
 
+void test_IRL1_IRL08() {
+    std::cout << "\n=== Testing Iteratively Reweighted L1 and L0.8 ===" << std::endl;
+    
+    Image im = imread("Input/pru.png");
+    if (im.height == 0) return;
+    
+    Kernel kernel = gauss2D(1.0);
+    Image im_blur = convolve3(im, kernel);
+    Image im_blur_noisy = addNoise(im_blur, 0.05);
+    
+    Image sharp_L1 = deconvCG_reg_IRL1(im_blur_noisy, kernel, 0.05, 10, 3);
+    imwrite(sharp_L1, "Output/pru_sharp_IRL1.png");
+    
+    Image sharp_L08 = deconvCG_reg_IRL08(im_blur_noisy, kernel, 0.05, 10, 3);
+    imwrite(sharp_L08, "Output/pru_sharp_IRL08.png");
+    
+    std::cout << "IR L1/L0.8 test complete!" << std::endl;
+}
+
 void test_naive_composite() {
     std::cout << "\n=== Testing Naive Composite ===" << std::endl;
     
@@ -382,9 +401,13 @@ int main() {
     test_grad_descent();
     test_conjugate_grad_descent();
     test_conjugate_grad_descent_reg();
+    test_IRL1_IRL08();
     test_naive_composite();
     test_Poisson();
     test_PoissonCG();
+    
+    std::cout << "\n=== Fun Composite ===" << std::endl;
+    createFunComposite();
     
     std::cout << "\n=================" << std::endl;
     std::cout << "All tests complete!" << std::endl;
@@ -393,11 +416,14 @@ int main() {
     std::cout << "  - pru_sharp_gd.png (gradient descent)" << std::endl;
     std::cout << "  - pru_sharp_cg.png (conjugate gradient)" << std::endl;
     std::cout << "  - pru_blur_noise.png" << std::endl;
-    std::cout << "  - pru_sharp_cg_reg.png (with regularization)" << std::endl;
+    std::cout << "  - pru_sharp_cg_reg.png (with L2 regularization)" << std::endl;
     std::cout << "  - pru_sharp_cg_wo_reg.png (without regularization)" << std::endl;
+    std::cout << "  - pru_sharp_IRL1.png (iteratively reweighted L1)" << std::endl;
+    std::cout << "  - pru_sharp_IRL08.png (iteratively reweighted L0.8)" << std::endl;
     std::cout << "  - naive_composite.png" << std::endl;
     std::cout << "  - poisson.png (gradient descent)" << std::endl;
     std::cout << "  - poisson_cg.png (conjugate gradient)" << std::endl;
+    std::cout << "  - fun_composite.png (kitten + puppy in sky)" << std::endl;
     std::cout << "  - test_convolution.png, test_laplacian.png" << std::endl;
     
     return 0;
