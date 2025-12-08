@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <functional>
 
 class Image {
 public:
@@ -85,5 +86,28 @@ Image addImages(const Image& im1, const Image& im2);
 Image subtractImages(const Image& im1, const Image& im2);
 Image scaleImage(const Image& im, double scale);
 Image multiplyImages(const Image& im1, const Image& im2);
-
+Image richardsonLucy(const Image& im_blur, const Kernel& kernel, int niter, double eps = 1e-7);
+Image gaussianDenoise(const Image& im, double sigma, int truncate = 3);
+Image anisotropicDiffusion(const Image& im, int niter, double kappa, double lambda = 0.25);
+Image nlMeansDenoise(const Image& im, int patchRadius, int searchRadius, double h);
+Image elementwiseMultiply(const Image& a, const Image& b);
+Image divideImages(const Image& num, const Image& denom, double eps = 1e-10);
+Image poissonPerez(
+    const Image& bg,      // target/background image
+    const Image& fg,      // source/foreground image (same size)
+    const Image& mask     // binary mask Ω
+);
+// Image poissonPerez(const Image& bg, const Image& fg, const Image& mask, int cgIters);
+Image CG_custom(const std::function<Image(const Image&)>& A, const Image& b, Image x, int niter);
+Image deconvIRLS(const Image& y, const Kernel& kernel, double p, double lambda, int outerIters, int cgIters);
+Image computeIRLSWeights(const Image& x, double p, double eps);
+void computeGradients(const Image& im, Image& gx, Image& gy);
+Image divergenceMixed(const Image& gx, const Image& gy);
+void cgSolve(
+    std::vector<double>& x,
+    const std::vector<double>& b,
+    const std::function<std::vector<double>(const std::vector<double>&)>& A,
+    int maxIter,
+    double tol
+);
 #endif // A9_H

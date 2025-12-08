@@ -107,7 +107,7 @@ Image createGradientImage(int height, int width) {
 
 Image addNoise(const Image& img, double noise_level) {
     Image noisy = img.copy();
-    std::srand(42); // Fixed seed for reproducibility
+    std::srand(42);
     
     for (size_t i = 0; i < noisy.data.size(); ++i) {
         double noise = (std::rand() / static_cast<double>(RAND_MAX)) - 0.5;
@@ -221,7 +221,6 @@ void test_Poisson() {
     
     int h = fg.height, w = fg.width;
     
-    // Binarize mask
     for (int i = 0; i < mask.height; ++i) {
         for (int j = 0; j < mask.width; ++j) {
             double val = mask(i, j, 0) > 0.5 ? 1.0 : 0.0;
@@ -231,7 +230,6 @@ void test_Poisson() {
         }
     }
     
-    // Extract background region
     Image bg2(h, w, 3);
     for (int i = 0; i < h; ++i) {
         for (int j = 0; j < w; ++j) {
@@ -243,7 +241,6 @@ void test_Poisson() {
     
     Image bg3, fg3;
     if (useLog) {
-        // Apply log transform
         bg3 = bg2.copy();
         fg3 = fg.copy();
         for (int i = 0; i < h; ++i) {
@@ -367,17 +364,64 @@ void test_basic_operations() {
     
     std::cout << "Basic operations test complete!" << std::endl;
 }
+void test_synthetic_deconvolution() {
+    std::cout << "\n=== Test Case: Synthetic Checkerboard Deconvolution ===" << std::endl;
+
+    Image synth = createTestImage(300, 300);
+    imwrite(synth, "Output/synth_checker.png");
+
+    Kernel kernel = gauss2D(1.0);
+    Image blur = convolve3(synth, kernel);
+    imwrite(blur, "Output/synth_checker_blur.png");
+
+    Image blur_noisy = addNoise(blur, 0.05);
+    imwrite(blur_noisy, "Output/synth_checker_blur_noise.png");
+
+    Image sharp_gd = deconvGradDescent(blur, kernel, 10);
+    imwrite(sharp_gd, "Output/synth_checker_gd.png");
+
+    Image sharp_cg = deconvCG(blur, kernel, 10);
+    imwrite(sharp_cg, "Output/synth_checker_cg.png");
+
+    Image sharp_cg_reg = deconvCG_reg(blur_noisy, kernel, 0.05, 10);
+    imwrite(sharp_cg_reg, "Output/synth_checker_cg_reg.png");
+
+    std::cout << "Synthetic deconvolution test complete!" << std::endl;
+}
+
+
+
+void test_synthetic_poisson() {
+    std::cout << "\n=== Test Case: Synthetic Gradient + Poisson Editing ===" << std::endl;
+
+    Image bg = createGradientImage(300, 300);
+    imwrite(bg, "Output/synth_grad.png");
+
+    Image mask = createCircleMask(300, 300);
+    imwrite(mask, "Output/synth_grad_mask.png");
+
+    Image fg = createTestImage(300, 300);
+
+    Image out_gd = Poisson(bg, fg, mask, 200);
+    imwrite(out_gd, "Output/synth_grad_poisson.png");
+
+    Image out_cg = PoissonCG(bg, fg, mask, 200);
+    imwrite(out_cg, "Output/synth_grad_poisson_cg.png");
+
+    std::cout << "Synthetic Poisson test complete!" << std::endl;
+}
+
 
 int main() {
     std::cout << "Starting A9 Tests" << std::endl;
     std::cout << "=================" << std::endl;
-    
-    #ifdef _WIN32
-        system("mkdir Output 2>nul");
-    #else
-        system("mkdir -p Output");
-    #endif
-    
+
+#ifdef _WIN32
+    system("mkdir Output 2>nul");
+#else
+    system("mkdir -p Output");
+#endif
+
     test_basic_operations();
     test_grad_descent();
     test_conjugate_grad_descent();
@@ -385,20 +429,149 @@ int main() {
     test_naive_composite();
     test_Poisson();
     test_PoissonCG();
-    
-    std::cout << "\n=================" << std::endl;
-    std::cout << "All tests complete!" << std::endl;
-    std::cout << "\nGenerated output files in Output/ directory:" << std::endl;
-    std::cout << "  - pru_original.png, pru_blur.png" << std::endl;
-    std::cout << "  - pru_sharp_gd.png (gradient descent)" << std::endl;
-    std::cout << "  - pru_sharp_cg.png (conjugate gradient)" << std::endl;
-    std::cout << "  - pru_blur_noise.png" << std::endl;
-    std::cout << "  - pru_sharp_cg_reg.png (with regularization)" << std::endl;
-    std::cout << "  - pru_sharp_cg_wo_reg.png (without regularization)" << std::endl;
-    std::cout << "  - naive_composite.png" << std::endl;
-    std::cout << "  - poisson.png (gradient descent)" << std::endl;
-    std::cout << "  - poisson_cg.png (conjugate gradient)" << std::endl;
-    std::cout << "  - test_convolution.png, test_laplacian.png" << std::endl;
-    
+
+    test_synthetic_deconvolution();
+    test_synthetic_poisson();
+
+    // ==================== EXTRA CREDIT TESTS ====================
+// === LOAD IMAGES ===
+    Image sharp = imread("Input/bear.png");
+    Image bg = imread("Input/waterpool.png");
+    Image fg = imread("Input/bear.png");         // foreground reused
+    Image mask = imread("Input/mask.png");
+
+    // Create a blur kernel (Gaussian)
+    Kernel blurK = gauss2D(2.0, 3);
+
+    // === CREATE A TEST BLUR ===
+    Image blurred = convolve3(sharp, blurK);
+    imwrite(blurred, "Output/test_blur.png");
+    std::cout << "Saved test_blur.png\n";
+
+
+    // // ============================================================
+    // // ============ IRLS: L1 DECONVOLUTION TEST ===================
+    // // ============================================================
+    // {
+    //     std::cout << "\n=== IRLS L1 test ===\n";
+    //     Image recL1 = deconvIRLS(
+    //         blurred,     // y 
+    //         blurK,       // kernel 
+    //         1.0,         // p = 1 (L1)
+    //         0.02,        // lambda 
+    //         100,           // outer IRLS iterations 
+    //         100           // inner CG iterations
+    //     );
+
+    //     imwrite(recL1, "Output/irls_L1.png");
+    //     std::cout << "Saved irls_L1.png\n";
+    // }
+
+    // // ============================================================
+    // // ============ IRLS: L0.8 DECONVOLUTION TEST =================
+    // // ============================================================
+    // {
+    //     std::cout << "\n=== IRLS L0.8 test ===\n";
+    //     Image recL08 = deconvIRLS(
+    //         blurred, 
+    //         blurK,
+    //         0.8,        // L0.8 promotes even sharper detail
+    //         0.02,
+    //         100,
+    //         100
+    //     );
+
+    //     imwrite(recL08, "Output/irls_L08.png");
+    //     std::cout << "Saved irls_L08.png\n";
+    // }
+
+
+    // // ============================================================
+    // // === Compare Richardson-Lucy to IRLS for sanity check =======
+    // // ============================================================
+    // {
+    //     std::cout << "\n=== Richardson–Lucy test ===\n";
+    //     Image rl = richardsonLucy(blurred, blurK, 20, 1e-6);
+    //     imwrite(rl, "Output/richardson_lucy.png");
+    //     std::cout << "Saved richardson_lucy.png\n";
+    // }
+
+
+    // // ============================================================
+    // // ====== Test mixed forward/backward divergence ==============
+    // // ============================================================
+    // {
+    //     std::cout << "\n=== Checking divergence correctness ===\n";
+
+    //     // Make a synthetic gradient field:
+    //     Image gx(sharp.height, sharp.width, sharp.channels);
+    //     Image gy(sharp.height, sharp.width, sharp.channels);
+    //     for (int y = 0; y < gx.height; ++y) {
+    //         for (int x = 0; x < gx.width; ++x) {
+    //             for (int c = 0; c < gx.channels; ++c) {
+    //                 gx(y,x,c) = (x % 20 < 10) ? 1.0 : -1.0;
+    //                 gy(y,x,c) = (y % 20 < 10) ? 1.0 : -1.0;
+    //             }
+    //         }
+    //     }
+
+    //     Image div = divergenceMixed(gx,gy);
+    //     imwrite(div, "Output/test_divergence.png");
+    //     std::cout << "Saved test_divergence.png\n";
+    // }
+
+
+    // ============================================================
+    // === Standard Poisson vs Pérez Poisson blending =============
+    // ============================================================
+    {
+        std::cout << "\n=== Poisson blending sanity test ===\n";
+
+        Image pstd = PoissonCG(bg, fg, mask, 200);
+        imwrite(pstd, "Output/poisson_standard.png");
+        std::cout << "Saved poisson_standard.png\n";
+
+        Image pperez = poissonPerez(bg, fg, mask);
+        imwrite(pperez, "Output/poisson_perez.png");
+        std::cout << "Saved poisson_perez.png\n";
+    }
+
+
+    // // ============================================================
+    // // === Mixed gradient compositing (Perez et al. paper) ========
+    // // ============================================================
+    // {
+    //     std::cout << "\n=== Mixed-gradients compositing test ===\n";
+
+    //     // Make gradients of foreground
+    //     Image gx(sharp.height, sharp.width, sharp.channels);
+    //     Image gy(sharp.height, sharp.width, sharp.channels);
+    //     computeGradients(fg, gx, gy);
+
+    //     // Divergence → Poisson solve
+    //     Image b = divergenceMixed(gx, gy);
+
+    //     // Build masked operator
+    //     auto A = [&](const Image& z)->Image {
+    //         Image Lz = applyLaplacian(z);
+    //         return multiplyImages(Lz, mask);
+    //     };
+
+    //     Image x0 = bg.copy();
+    //     Image mixed = CG_custom(A, b, x0, 300);
+
+    //     // copy outside mask
+    //     for (int y = 0; y < mixed.height; ++y)
+    //         for (int x = 0; x < mixed.width; ++x)
+    //             if (mask(y,x,0) < 0.5)
+    //                 for (int c = 0; c < mixed.channels; ++c)
+    //                     mixed(y,x,c) = bg(y,x,c);
+
+    //     imwrite(mixed, "Output/perez_mixed_gradient.png");
+    //     std::cout << "Saved perez_mixed_gradient.png\n";
+    // }
+
+
+    std::cout << "\n=== All tests complete ===\n";
     return 0;
 }

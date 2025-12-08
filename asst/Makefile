@@ -15,6 +15,7 @@
 BUILD_DIR  :=_build
 EXECUTABLE := a9
 OUTPUT := Output
+NUMBER := 9
 
 # list of headers
 HEADERS = $(wildcard *.h)
